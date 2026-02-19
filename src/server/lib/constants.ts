@@ -1,0 +1,26 @@
+export const VOTE_THRESHOLD = 50
+export const REVEAL_AFTER_MS = 86_400_000
+
+export const MAX_POSTS_PER_DAY = 5
+export const MAX_VOTES_PER_DAY = 50
+
+export const STATEMENT_MIN_LEN = 10
+export const STATEMENT_MAX_LEN = 200
+
+export const FOOLED_BONUS_70 = 20
+export const FOOLED_BONUS_90 = 50
+export const VOTE_WEIGHT_CAP = 3.0
+export const VOTE_WEIGHT_DIVISOR = 100
+
+export const DETECTIVE_CORRECT = 10
+export const DETECTIVE_SHARP_EYE = 25
+export const DETECTIVE_SHARP_EYE_THRESHOLD = 30
+export const DETECTIVE_PARTICIPATION = 2
+
+export const RATE_LIMIT_EXPIRE_SECONDS = 86_400
+
+export const HTTP_STATUS_BAD_REQUEST = 400
+export const HTTP_STATUS_FORBIDDEN = 403
+export const HTTP_STATUS_NOT_FOUND = 404
+export const HTTP_STATUS_TOO_MANY_REQUESTS = 429
+export const HTTP_STATUS_INTERNAL_ERROR = 500

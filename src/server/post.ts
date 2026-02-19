@@ -1,6 +1,6 @@
 import { context, reddit } from '@devvit/web/server'
 
-export const createPost = async () => {
+export const createPost = async (title: string): Promise<{ id: string }> => {
   const { subredditName } = context
   if (!subredditName) {
     throw new Error('subredditName is required')
@@ -8,8 +8,7 @@ export const createPost = async () => {
 
   return await reddit.submitCustomPost({
     subredditName,
-    // TODO: Add a title
-    title: '{{ name }}',
-    entry: 'default'
+    title,
+    entry: 'default',
   })
 }

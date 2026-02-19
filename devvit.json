@@ -1,11 +1,11 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "delete23423",
+  "name": "decept-game",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
       "default": {
-        "entry": "src/client/index.html",
+        "entry": "index.html",
         "height": "tall",
         "inline": true
       }
@@ -18,8 +18,8 @@
   "menu": {
     "items": [
       {
-        "label": "Create a new post",
-        "description": "Svelte",
+        "label": "Create a Decept post",
+        "description": "Start a 2 Truths 1 Lie game",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -29,7 +29,15 @@
   "triggers": {
     "onAppInstall": "/internal/on-app-install"
   },
+  "scheduler": {
+    "tasks": {
+      "reveal-expired": {
+        "endpoint": "/internal/jobs/reveal-expired",
+        "cron": "0 * * * *"
+      }
+    }
+  },
   "dev": {
-    "subreddit": "cat543"
+    "subreddit": "decept"
   }
 }

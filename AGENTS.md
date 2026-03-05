@@ -9,17 +9,22 @@
 | `bun run build` | `vite build` | Production build to dist/ |
 | `bun run type-check` | `tsc --build` | TypeScript composite build check (all 3 projects) |
 | `bun run check` | `svelte-check` | Svelte-specific type checking (client only) |
+| `bun run test` | `vitest run` | Run all tests (Vitest + @devvit/test) |
+| `bun run test:watch` | `vitest` | Watch mode for development |
 | `bun run deploy` | `build && devvit upload` | Build and upload to Devvit |
 | `bun run launch` | `build && deploy && devvit publish` | Full release pipeline |
 
 **Before committing:**
 ```bash
-bun run type-check
+bun run test && bun run type-check
 ```
 
-> **Not yet configured:** No test runner (vitest/jest), linter (eslint/biome), or formatter
-> (prettier/biome) is installed. `bun test` (via the `test` script) is currently broken
-> and should not be used yet. Do not add these tools without explicit instruction.
+> **Testing:** Vitest + `@devvit/test` provides in-memory Redis, Reddit API mocks, and per-test
+> isolation. Tests live in `__tests__/` directories colocated with source.
+> TDD workflow: write failing test → minimal implementation → refactor → `bun run test`.
+
+> **Not yet configured:** No linter (eslint/biome) or formatter (prettier/biome) is installed.
+> Do not add these tools without explicit instruction.
 
 ---
 
@@ -35,31 +40,85 @@ src/
 │   ├── main.ts       # Entry: mount(App, { target })
 │   └── index.html    # Entry HTML
 ├── server/           # Hono.js routes (serverless)
+│   ├── __tests__/    # Server tests (Vitest + @devvit/test)
 │   ├── index.ts      # Hono app, route handlers, createServer()
 │   └── post.ts       # Post creation logic
-└── shared/           # Shared TypeScript (project references, no source files yet)
-    └── tsconfig.json
+├── shared/           # Shared TypeScript (project references, no source files yet)
+│   └── tsconfig.json
 ```
 
 Data flow: `User Action → Svelte → fetch('/api/...') → Hono → Redis/Reddit API → Response → UI`
 
-**Key packages:** Svelte 5.x, Tailwind CSS 4.x, Hono, TypeScript 5.x, Vite 8.x-beta, @devvit/web 0.12.x, Bun (runtime & package manager)
+**Key packages:** Svelte 5.x, Tailwind CSS 4.x, Hono, TypeScript 5.x, Vite 8.x-beta, @devvit/web 0.12.x, Bun (package manager)
 
 ---
 
-## Hard Constraints
+## Coding Principles
 
-| # | Rule | Why |
-|---|------|-----|
-| 1 | Svelte 5 runes syntax ONLY (`$state`, `$derived`, `$effect`) | Svelte 4 syntax won't compile |
-| 2 | Tailwind CSS ONLY -- no `<style>` blocks | Consistency, bundle size |
-| 3 | Server routes: `/api/*` (public) or `/internal/*` (triggers/menu) | Devvit routing requirement |
-| 4 | No `localStorage` / `sessionStorage` in client | Sandboxed webview, fails silently |
-| 5 | No direct external `fetch()` from client | Must proxy through server endpoints |
-| 6 | Named exports only (no `export default`) | Tree-shaking; exception: `.svelte` files |
-| 7 | No scrolling in inline views -- content must fit viewport | Broken UX on Reddit |
-| 8 | Serverless: no long-running processes, no `setInterval` | 30s max request timeout |
-| 9 | Redis: 500MB storage, 1000 cmd/sec, 4MB request payload | Platform hard limits |
+These apply to ALL code — server, client, shared. Every skill inherits these rules.
+
+### Functional & minimal
+- Pure functions by default: same input → same output, no side effects
+- Prefer `map`, `filter`, `reduce` over imperative loops
+- No mutation of function arguments — return new values
+- Extract logic into small, composable, single-purpose functions (≤30 lines)
+- Write the least code that solves the problem — delete what you can
+- No dead code, no commented-out code, no "just in case" abstractions
+- One function does one thing. If you're naming it `doXAndY`, split it.
+
+### Readability
+- Code should read top-to-bottom like a story — put helpers below their callers
+- Descriptive names over comments: `getUserScore()` not `getVal() // gets user score`
+- Early returns to avoid nesting: guard → bail, then happy path
+- Max one level of callback nesting — extract named functions instead
+- Comments explain *why*, never *what* (the code shows what)
+
+### Modularity
+- Each file has a single clear responsibility
+- Shared logic lives in `src/shared/`, server helpers in `src/server/lib/`
+- Depend on interfaces/types, not concrete implementations
+- No circular imports — if A imports B, B must not import A
+
+### Maintainability
+- Explicit over implicit: return types on exports, named constants over magic values
+- Fail fast with descriptive errors — never silently swallow failures
+- Handle all edge cases: null, undefined, empty arrays, missing keys
+- `as const` for literal objects/arrays to preserve type narrowness
+
+---
+
+## Test-Driven Development (TDD)
+
+This project follows strict TDD. Every AI agent and developer must follow these rules.
+
+### The rule: test first, always
+
+1. Before writing any implementation code, check if a corresponding `__tests__/*.test.ts` file exists
+2. If not, write the failing test first (Red)
+3. Then write the minimal code to make it pass (Green)
+4. Then refactor while keeping tests green (Refactor)
+5. Run `bun run test` before committing — zero failures required
+
+### Test stack
+
+- **Vitest** as the test runner
+- **`@devvit/test`** provides per-test isolated Devvit backend (in-memory Redis, Reddit API mocks, Scheduler, Realtime)
+- No manual mock setup needed — `createDevvitTest()` handles everything
+- See `.agents/skills/tdd/SKILL.md` for full patterns and code examples
+
+### What must be tested
+
+| Layer | Must test | Can skip tests |
+|-------|----------|---------------|
+| `src/server/**/*.ts` | All routes, handlers, business logic | — |
+| `src/server/lib/**/*.ts` | All helpers, validators, transforms | — |
+| `src/shared/**/*.ts` | All pure functions | — |
+| `src/client/**/*.ts` | Extracted logic files | `.svelte` files (use autofixer instead) |
+| Config / docs / skills | — | Always skip |
+
+### After every implementation task
+
+Run `bun run test` and confirm zero failures before moving to the next task.
 
 ---
 
@@ -68,13 +127,13 @@ Data flow: `User Action → Svelte → fetch('/api/...') → Hono → Redis/Redd
 ### TypeScript
 
 - **`strict: true`** with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noUnusedLocals`, `noUnusedParameters`
-- Array/object index access returns `T | undefined` -- always handle it
+- Array/object index access returns `T | undefined` — always handle it
 - Use `const` by default, `let` only if reassigned, never `var`
 - Prefer `unknown` over `any`, then narrow with `instanceof` or type guards
 - Use `as const` for literal arrays/objects
 - Explicit return types on exported/public functions
 - Arrow function expressions for all functions: `const foo = (): void => {}`
-- Keep functions <=30 lines, single responsibility
+- Keep functions ≤30 lines, single responsibility
 
 ### Naming
 
@@ -104,78 +163,6 @@ import './app.css'                              // Side-effect imports last
 import App from './App.svelte'
 ```
 
-### Error Handling
-
-```typescript
-// Server routes: try/catch with instanceof narrowing
-try {
-  const result = await doThing()
-  return c.json({ status: 'success', data: result })
-} catch (error) {
-  const message = error instanceof Error ? error.message : 'Unknown error'
-  return c.json({ status: 'error', message }, 500)
-}
-
-// Guard clauses for required context
-const { subredditName } = context
-if (!subredditName) {
-  throw new Error('subredditName is required')
-}
-```
-
-**Response shapes:**
-- Success: `{ status: 'success', data: { ... } }`
-- Error: `{ status: 'error', message: 'Human-readable' }`
-- Navigation (menu items): `{ navigateTo: 'https://reddit.com/...' }`
-
-### HTTP Status Constants
-
-```typescript
-const HTTP_STATUS_BAD_REQUEST = 400
-const HTTP_STATUS_NOT_FOUND = 404
-const HTTP_STATUS_INTERNAL_ERROR = 500
-```
-
----
-
-## Server Patterns
-
-Routes are defined in `src/server/index.ts` using Hono. Menu items and triggers are declared in `devvit.json` and map to `/internal/*` endpoints.
-
-```typescript
-import { Hono } from 'hono'
-import { context, redis, reddit, createServer, getServerPort } from '@devvit/web/server'
-
-const app = new Hono()
-
-// Public API endpoint (called by client via fetch)
-app.get('/api/game/:id', async (c) => { ... })
-
-// Internal endpoint (triggered by devvit.json menu/trigger config)
-app.post('/internal/menu/post-create', async (c) => { ... })
-
-// Server bootstrap
-const port = getServerPort()
-createServer(app.fetch, { port })
-```
-
-**Redis key naming:** `{entity}:{id}:{field}` -- e.g. `user:t2_abc:stats`, `game:t3_xyz:state`
-
-**Context variables** (available in server via `context`):
-- `context.userId` -- logged-in user (`"t2_..."` or undefined)
-- `context.postId` -- current post (`"t3_..."` or undefined)
-- `context.subredditId`, `context.subredditName` -- always available
-
----
-
-## Svelte / Client Patterns
-
-- Use Svelte 5 runes: `$state()`, `$derived()`, `$effect()`
-- Mount with `mount()` from `'svelte'`, not `new Component()`
-- Tailwind classes only, mobile-first (`text-sm md:text-base lg:text-lg`)
-- No scrolling: use `h-full`, `overflow-hidden`, `flex` + `flex-shrink`; never `overflow-y-auto`, `min-h-screen`, `h-screen`
-- Test at minimum 320x320px viewport
-
 ---
 
 ## Git Conventions
@@ -194,15 +181,48 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
 
 ---
 
-## Where to Put New Code
+## MCP Tools
 
-- Svelte component (reusable) -> `src/client/components/`
-- Svelte component (page-level) -> `src/client/views/`
-- Client utility -> `src/client/lib/`
-- API endpoint -> `src/server/routes/` (or in `src/server/index.ts` if small)
-- Shared types/constants -> `src/shared/`
-- Server utility -> `src/server/lib/`
+Two MCP servers are available. Use them proactively — they give better answers than guessing.
 
-## Supplemental Docs
+### Svelte MCP (`svelte`)
 
-Detailed guides in `agent_docs/`: `database.md`, `reddit.md`, `code-patterns.md`, `style-guide.md`, `workflow.md`, `troubleshooting.md`
+Use for any Svelte 5 / SvelteKit question, component authoring, or rune usage.
+
+| Tool | When to call |
+|------|-------------|
+| `list-sections` | First call in any Svelte task — discover available docs |
+| `get-documentation` | Fetch full docs for sections identified by `list-sections` |
+| `svelte-autofixer` | Run on every Svelte component before finishing — keep calling until zero issues |
+| `playground-link` | Only after user asks for one, and only if code was NOT written to a file |
+
+Workflow: `list-sections` → read use_cases → `get-documentation` (all relevant sections at once) → write code → `svelte-autofixer` (loop until clean).
+
+### Devvit MCP (`devvit`)
+
+Use for any Devvit platform question, Redis patterns, Reddit API, config, or constraints.
+
+| Tool | When to call |
+|------|-------------|
+| `devvit_search` | Search Devvit docs for a specific topic (redis commands, API methods, config options, constraints) |
+| `devvit_logs` | Stream logs from a deployed app on a subreddit — useful for debugging live issues |
+
+Prefer `devvit_search` over pasting large doc files into context. It's hybrid search so natural language queries work well (e.g. `"redis sorted set leaderboard"`, `"custom post height options"`).
+
+---
+
+## Research & Clarification
+
+### Use web search when uncertain
+- If you're unsure about an API, library version, behavior, or best practice — search the web first
+- Don't guess at package APIs, config options, or platform constraints — look them up
+- Use web search and web fetch tools proactively for anything outside your confident knowledge
+- Prefer official docs and recent sources; cross-reference when results conflict
+
+### Ask questions until ≥90% confident
+- Before starting implementation, assess your confidence in the approach
+- If confidence is below 90%, ask the user clarifying questions — don't assume
+- Cover: expected behavior, edge cases, integration points, constraints, and user preferences
+- It's better to ask one extra question than to build the wrong thing
+- Once you're ≥90% sure of the requirements and approach, proceed without further delay
+

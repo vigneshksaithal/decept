@@ -24,7 +24,7 @@
         "tailwindcss": "^4.2.0"
     },
     "devDependencies": {
-        "@devvit/start": "0.12.13",
+        "@devvit/start": "0.12.14",
         "@sveltejs/vite-plugin-svelte": "^6.2.4",
         "@types/node": "^25.3.0",
         "concurrently": "^9.2.1",
